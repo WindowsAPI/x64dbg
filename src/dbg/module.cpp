@@ -8,6 +8,7 @@
 #include "memory.h"
 #include "label.h"
 #include <algorithm>
+#include <string>
 #include <shlwapi.h>
 #include "console.h"
 #include "debugger.h"
@@ -1595,6 +1596,47 @@ void MODIMPORT::convertToGuiSymbol(duint base, SYMBOLINFO* info) const
 {
     info->addr = base + iatRva;
     info->type = sym_import;
+    String displayName = name;
+    String displayUndecoratedName = undecoratedName;
+    if(ordinal != -1)
+    {
+        auto modInfo = ModInfoFromAddr(base);
+        if(modInfo && moduleIndex < modInfo->importModules.size())
+        {
+            const auto& targetModuleName = modInfo->importModules[moduleIndex];
+            auto targetBase = ModBaseFromName(targetModuleName.c_str());
+            auto targetModInfo = ModInfoFromAddr(targetBase);
+            if(targetModInfo)
+            {
+                if(targetModInfo->exports.empty() && targetModInfo->fileMapVA != 0)
+                {
+                    GetModuleInfo(*targetModInfo, targetModInfo->fileMapVA);
+                }
+                if(!targetModInfo->exports.empty())
+                {
+                    auto exportIndex = ordinal - targetModInfo->exportOrdinalBase;
+                    if(exportIndex < targetModInfo->exports.size() && exportIndex >= 0)
+                    {
+                        const auto& exportEntry = targetModInfo->exports[exportIndex];
+                        if(targetModInfo->symbols->isOpen())
+                        {
+                            SymbolInfo symInfo;
+                            if(targetModInfo->symbols->findSymbolExact(exportEntry.rva, symInfo))
+                            {
+                                displayName = symInfo.decoratedName;
+                                displayUndecoratedName = symInfo.undecoratedName;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if(displayName != name)
+    {
+        const_cast<MODIMPORT*>(this)->name = displayName;
+        const_cast<MODIMPORT*>(this)->undecoratedName = displayUndecoratedName;
+    }
     info->decoratedSymbol = (char*)name.c_str();
     info->undecoratedSymbol = (char*)undecoratedName.c_str();
     info->freeDecorated = info->freeUndecorated = false;
